@@ -13,6 +13,11 @@
       .card-shadow { box-shadow: 0 8px 20px rgba(0,0,0,0.02); }
       .transition-all { transition: all 0.2s ease; }
       .media-grid img, .media-grid video { width: 100%; height: 180px; object-fit: cover; border-radius: 12px; }
+      .track-step { display: flex; align-items: center; gap: 8px; }
+      .track-line { flex: 1; height: 2px; background: #e5e7eb; margin: 0 8px; }
+      .track-step.active .track-dot { background: #2563eb; border-color: #2563eb; }
+      .track-step.completed .track-dot { background: #22c55e; border-color: #22c55e; }
+      .track-dot { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #d1d5db; background: white; flex-shrink: 0; }
     </style>
   </head>
   <body>
@@ -41,12 +46,11 @@
       ];
 
       const INITIAL_USERS = [
-        { id: 1, email: 'customer@easyship.com', password: 'customer123', role: 'customer', name: 'Amara Okonkwo' },
-        { id: 2, email: 'admin@easyship.com', password: 'admin123', role: 'admin', name: 'Chinasa Magnus' },
-        { id: 3, email: 'jane@example.com', password: 'jane123', role: 'customer', name: 'Jane Doe' },
+        { id: 1, email: 'customer@easyship.com', password: 'customer123', role: 'customer', name: 'Amara Okonkwo', promoOptIn: true },
+        { id: 2, email: 'admin@easyship.com', password: 'admin123', role: 'admin', name: 'Chinasa Magnus', promoOptIn: false },
+        { id: 3, email: 'jane@example.com', password: 'jane123', role: 'customer', name: 'Jane Doe', promoOptIn: true },
       ];
 
-      // Pricing per route (from → to)
       const INITIAL_PRICING = {
         'Lagos→Abuja': 4500,
         'Lagos→Houston': 32000,
@@ -54,6 +58,17 @@
         'Abuja→Lagos': 4500,
         'Lagos→Port Harcourt': 3800,
       };
+
+      const INITIAL_SHIPMENTS = [
+        { id: 1, userId: 1, status: 'delivered', from: 'Lagos', to: 'Abuja', date: '2026-07-10', cost: 4500, approved: true, tracking: ['Order placed', 'Picked up', 'In transit', 'Out for delivery', 'Delivered'], currentStep: 4 },
+        { id: 2, userId: 1, status: 'in transit', from: 'Lagos', to: 'Houston, TX', date: '2026-07-15', cost: 32000, approved: true, tracking: ['Order placed', 'Picked up', 'In transit', 'Customs clearance', 'Out for delivery'], currentStep: 2 },
+        { id: 3, userId: 3, status: 'pending', from: 'Lagos', to: 'London', date: '2026-07-20', cost: 45000, approved: false, tracking: ['Order placed'], currentStep: 0 },
+      ];
+
+      // Support tickets
+      const INITIAL_TICKETS = [
+        { id: 1, userId: 1, subject: 'Damaged item', message: 'My package arrived broken.', status: 'open', date: '2026-07-16' },
+      ];
 
       // ---------- App Context ----------
       const AppContext = React.createContext();
@@ -65,11 +80,9 @@
         const [currentUser, setCurrentUser] = useState(null);
         const [isAuthenticated, setIsAuthenticated] = useState(false);
         const [pricing, setPricing] = useState(INITIAL_PRICING);
-        const [shipments, setShipments] = useState([
-          { id: 1, userId: 1, status: 'delivered', from: 'Lagos', to: 'Abuja', date: '2026-07-10', cost: 4500, approved: true },
-          { id: 2, userId: 1, status: 'in transit', from: 'Lagos', to: 'Houston, TX', date: '2026-07-15', cost: 32000, approved: true },
-          { id: 3, userId: 3, status: 'pending', from: 'Lagos', to: 'London', date: '2026-07-20', cost: 45000, approved: false },
-        ]);
+        const [shipments, setShipments] = useState(INITIAL_SHIPMENTS);
+        const [tickets, setTickets] = useState(INITIAL_TICKETS);
+        const [payments, setPayments] = useState([]);
 
         const login = (email, password) => {
           const user = users.find(u => u.email === email && u.password === password);
@@ -86,21 +99,20 @@
           setIsAuthenticated(false);
         };
 
-        const register = (email, password, name) => {
+        const register = (email, password, name, promoOptIn) => {
           const exists = users.find(u => u.email === email);
           if (exists) return false;
-          const newUser = { id: Date.now(), email, password, role: 'customer', name };
+          const newUser = { id: Date.now(), email, password, role: 'customer', name, promoOptIn };
           setUsers([...users, newUser]);
           return true;
         };
 
-        // Admin: customer management
+        // Admin functions
         const deleteUser = (id) => setUsers(users.filter(u => u.id !== id));
         const updateUser = (id, data) => {
           setUsers(users.map(u => u.id === id ? { ...u, ...data } : u));
         };
 
-        // Admin: testimonials
         const addTestimonial = (testimonial) => {
           setTestimonials([...testimonials, { id: Date.now(), ...testimonial }]);
         };
@@ -108,25 +120,51 @@
           setTestimonials(testimonials.filter(t => t.id !== id));
         };
 
-        // Admin: media
         const addMedia = (item) => setMedia([...media, { id: Date.now(), ...item }]);
         const deleteMedia = (id) => setMedia(media.filter(m => m.id !== id));
 
-        // Admin: pricing
         const updatePricing = (route, price) => {
           setPricing({ ...pricing, [route]: price });
         };
 
-        // Shipments
         const getUserShipments = (userId) => shipments.filter(s => s.userId === userId);
         const addShipment = (shipment) => {
-          setShipments([...shipments, { id: Date.now(), ...shipment }]);
+          const newShipment = { 
+            id: Date.now(), 
+            ...shipment, 
+            tracking: ['Order placed'], 
+            currentStep: 0,
+            status: 'pending',
+            approved: false 
+          };
+          setShipments([...shipments, newShipment]);
+          return newShipment;
         };
         const approveShipment = (id) => {
-          setShipments(shipments.map(s => s.id === id ? { ...s, approved: true, status: 'in transit' } : s));
+          setShipments(shipments.map(s => s.id === id ? { ...s, approved: true, status: 'in transit', tracking: ['Order placed', 'Picked up', 'In transit'], currentStep: 2 } : s));
         };
         const deleteShipment = (id) => {
           setShipments(shipments.filter(s => s.id !== id));
+        };
+        const updateShipmentTracking = (id, step) => {
+          setShipments(shipments.map(s => s.id === id ? { ...s, currentStep: step } : s));
+        };
+
+        // Payments
+        const addPayment = (payment) => {
+          const newPayment = { id: Date.now(), ...payment, date: new Date().toISOString().split('T')[0], status: 'completed' };
+          setPayments([...payments, newPayment]);
+          return newPayment;
+        };
+
+        // Support tickets
+        const addTicket = (ticket) => {
+          const newTicket = { id: Date.now(), ...ticket, date: new Date().toISOString().split('T')[0], status: 'open' };
+          setTickets([...tickets, newTicket]);
+          return newTicket;
+        };
+        const closeTicket = (id) => {
+          setTickets(tickets.map(t => t.id === id ? { ...t, status: 'closed' } : t));
         };
 
         const value = {
@@ -140,8 +178,10 @@
           addMedia, deleteMedia,
           pricing, updatePricing,
           shipments, setShipments,
-          getUserShipments, addShipment, approveShipment, deleteShipment,
+          getUserShipments, addShipment, approveShipment, deleteShipment, updateShipmentTracking,
           deleteUser, updateUser,
+          payments, addPayment,
+          tickets, addTicket, closeTicket,
         };
         return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
       };
@@ -153,8 +193,9 @@
       // Navigation
       const NavBar = () => {
         const { isAuthenticated, currentUser, logout } = useApp();
+        const [showSupport, setShowSupport] = useState(false);
         return (
-          <nav className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between sticky top-0 z-30 shadow-sm">
+          <nav className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between sticky top-0 z-30 shadow-sm flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <i className="fas fa-ship text-2xl text-blue-600"></i>
               <span className="text-xl font-bold text-gray-800">EasyShip</span>
@@ -167,18 +208,65 @@
                   <a href="#register" className="text-sm bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700">Sign up</a>
                 </>
               ) : (
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <button onClick={() => setShowSupport(!showSupport)} className="text-sm text-gray-600 hover:text-blue-600 flex items-center gap-1">
+                    <i className="fas fa-headset"></i> Support
+                  </button>
                   <span className="text-sm text-gray-700 hidden sm:block">{currentUser?.name}</span>
                   <span className="text-xs bg-gray-200 px-2 py-0.5 rounded-full text-gray-600">{currentUser?.role}</span>
                   <button onClick={logout} className="text-sm text-red-500 hover:text-red-700 flex items-center gap-1"><i className="fas fa-sign-out-alt"></i> Logout</button>
                 </div>
               )}
             </div>
+            {showSupport && isAuthenticated && <SupportModal onClose={() => setShowSupport(false)} />}
           </nav>
         );
       };
 
-      // Media Showcase (above testimonials)
+      // Support Modal
+      const SupportModal = ({ onClose }) => {
+        const { currentUser, addTicket } = useApp();
+        const [subject, setSubject] = useState('');
+        const [message, setMessage] = useState('');
+        const [submitted, setSubmitted] = useState(false);
+
+        const handleSubmit = (e) => {
+          e.preventDefault();
+          if (!subject || !message) return;
+          addTicket({ userId: currentUser.id, subject, message });
+          setSubmitted(true);
+          setTimeout(() => { setSubmitted(false); onClose(); }, 2000);
+        };
+
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-bold">Support Center</h3>
+                <button onClick={onClose} className="text-gray-500 hover:text-gray-700"><i className="fas fa-times"></i></button>
+              </div>
+              {submitted ? (
+                <div className="text-center py-8 text-green-600"><i className="fas fa-check-circle text-4xl mb-2"></i><p>Ticket submitted! We'll get back to you soon.</p></div>
+              ) : (
+                <>
+                  <div className="mb-4 text-sm text-gray-600">
+                    <p><i className="fas fa-phone mr-2"></i> +234 800 EASYSHIP</p>
+                    <p><i className="fas fa-envelope mr-2"></i> support@easyship.com</p>
+                    <p><i className="fas fa-clock mr-2"></i> Mon-Fri 8AM - 6PM</p>
+                  </div>
+                  <form onSubmit={handleSubmit} className="space-y-3">
+                    <input type="text" value={subject} onChange={e=>setSubject(e.target.value)} placeholder="Subject" className="w-full border border-gray-200 rounded-xl px-4 py-2 text-sm" required />
+                    <textarea value={message} onChange={e=>setMessage(e.target.value)} placeholder="Describe your issue..." className="w-full border border-gray-200 rounded-xl px-4 py-2 text-sm" rows="4" required />
+                    <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded-xl font-medium hover:bg-blue-700">Submit Ticket</button>
+                  </form>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      };
+
+      // Media Showcase
       const MediaShowcase = () => {
         const { media } = useApp();
         return (
@@ -200,7 +288,7 @@
         );
       };
 
-      // Public Home
+      // Home
       const Home = ({ setView }) => {
         const { testimonials } = useApp();
         return (
@@ -214,10 +302,8 @@
               </div>
             </section>
 
-            {/* Media Showcase */}
             <MediaShowcase />
 
-            {/* Testimonials */}
             <section className="mt-16">
               <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">What Our Customers Say</h2>
               <div className="grid md:grid-cols-3 gap-6">
@@ -241,12 +327,13 @@
         );
       };
 
-      // AuthForm (login/register)
+      // AuthForm with promo opt-in
       const AuthForm = ({ type, setView }) => {
         const { login, register } = useApp();
         const [email, setEmail] = useState('');
         const [password, setPassword] = useState('');
         const [name, setName] = useState('');
+        const [promoOptIn, setPromoOptIn] = useState(true);
         const [error, setError] = useState('');
 
         const handleSubmit = (e) => {
@@ -258,7 +345,7 @@
             else setView('dashboard');
           } else {
             if (!name.trim()) { setError('Full name required'); return; }
-            const success = register(email, password, name);
+            const success = register(email, password, name, promoOptIn);
             if (!success) setError('Email already registered.');
             else { setView('dashboard'); }
           }
@@ -270,10 +357,16 @@
             {error && <div className="bg-red-50 text-red-600 p-3 rounded-xl text-sm mb-4">{error}</div>}
             <form onSubmit={handleSubmit} className="space-y-4">
               {type === 'register' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Full Name</label>
-                  <input type="text" value={name} onChange={e=>setName(e.target.value)} className="w-full border border-gray-200 rounded-xl px-4 py-3 mt-1" placeholder="Amara Okonkwo" required />
-                </div>
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Full Name</label>
+                    <input type="text" value={name} onChange={e=>setName(e.target.value)} className="w-full border border-gray-200 rounded-xl px-4 py-3 mt-1" placeholder="Amara Okonkwo" required />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" id="promoOptIn" checked={promoOptIn} onChange={e=>setPromoOptIn(e.target.checked)} className="w-4 h-4 text-blue-600" />
+                    <label htmlFor="promoOptIn" className="text-sm text-gray-600">I agree to receive promotional emails and updates</label>
+                  </div>
+                </>
               )}
               <div>
                 <label className="block text-sm font-medium text-gray-700">Email</label>
@@ -297,11 +390,34 @@
         );
       };
 
-      // Customer Dashboard
+      // Tracking component
+      const TrackingSteps = ({ shipment }) => {
+        const steps = shipment.tracking || ['Order placed', 'Picked up', 'In transit', 'Out for delivery', 'Delivered'];
+        const currentStep = shipment.currentStep || 0;
+        return (
+          <div className="mt-2">
+            <div className="flex items-center gap-1 text-xs">
+              {steps.map((step, idx) => (
+                <React.Fragment key={idx}>
+                  <div className={`track-step ${idx <= currentStep ? 'completed' : ''} flex items-center`}>
+                    <div className="track-dot"></div>
+                    <span className="text-xs ml-1 hidden sm:inline">{step}</span>
+                  </div>
+                  {idx < steps.length - 1 && <div className="track-line"></div>}
+                </React.Fragment>
+              ))}
+            </div>
+            <div className="text-xs text-gray-500 mt-1">Step {currentStep + 1} of {steps.length}: {steps[currentStep] || 'Order placed'}</div>
+          </div>
+        );
+      };
+
+      // Customer Dashboard with payment and tracking
       const CustomerDashboard = () => {
-        const { currentUser, getUserShipments, addShipment, pricing } = useApp();
+        const { currentUser, getUserShipments, addShipment, pricing, addPayment, updateShipmentTracking } = useApp();
         const [shipments, setShipmentsState] = useState([]);
         const [newShipment, setNewShipment] = useState({ from: '', to: '', cost: '' });
+        const [showPayment, setShowPayment] = useState(null);
 
         useEffect(() => {
           if (currentUser) {
@@ -311,21 +427,28 @@
 
         const handleAddShipment = (e) => {
           e.preventDefault();
-          if (!newShipment.from || !newShipment.to || !newShipment.cost) return;
+          if (!newShipment.from || !newShipment.to) return;
           const routeKey = `${newShipment.from}→${newShipment.to}`;
           const estimatedCost = pricing[routeKey] || parseFloat(newShipment.cost) || 5000;
           const shipment = {
             userId: currentUser.id,
-            status: 'pending',
             from: newShipment.from,
             to: newShipment.to,
-            date: new Date().toISOString().split('T')[0],
             cost: estimatedCost,
-            approved: false,
           };
-          addShipment(shipment);
-          setShipmentsState([...shipments, shipment]);
+          const created = addShipment(shipment);
+          setShipmentsState([...shipments, created]);
           setNewShipment({ from: '', to: '', cost: '' });
+          // Simulate payment popup
+          setShowPayment({ shipmentId: created.id, amount: estimatedCost });
+        };
+
+        const handlePayment = (shipmentId, amount) => {
+          addPayment({ userId: currentUser.id, shipmentId, amount });
+          setShowPayment(null);
+          // Update tracking after payment
+          updateShipmentTracking(shipmentId, 1);
+          setShipmentsState(shipments.map(s => s.id === shipmentId ? { ...s, status: 'in transit', tracking: ['Order placed', 'Picked up', 'In transit'], currentStep: 1 } : s));
         };
 
         return (
@@ -339,16 +462,22 @@
                 {shipments.length === 0 ? (
                   <p className="text-gray-400 text-sm mt-3">No shipments yet.</p>
                 ) : (
-                  <ul className="mt-3 space-y-3">
-                    {shipments.map((s, idx) => (
-                      <li key={idx} className="border-b border-gray-50 pb-2 flex justify-between items-center">
-                        <div>
-                          <span className="font-medium text-gray-800">{s.from} → {s.to}</span>
-                          <span className="text-xs text-gray-400 ml-2">{s.date}</span>
-                          <span className={`ml-3 text-xs px-2 py-0.5 rounded-full ${s.status === 'delivered' ? 'bg-green-100 text-green-700' : s.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-100 text-blue-700'}`}>{s.status}</span>
-                          {!s.approved && <span className="ml-2 text-xs text-red-400">(awaiting approval)</span>}
+                  <ul className="mt-3 space-y-4 max-h-80 overflow-y-auto">
+                    {shipments.map((s) => (
+                      <li key={s.id} className="border-b border-gray-50 pb-3">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <span className="font-medium text-gray-800">{s.from} → {s.to}</span>
+                            <span className="text-xs text-gray-400 ml-2">{s.date}</span>
+                            <span className={`ml-3 text-xs px-2 py-0.5 rounded-full ${s.status === 'delivered' ? 'bg-green-100 text-green-700' : s.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-100 text-blue-700'}`}>{s.status}</span>
+                            {!s.approved && <span className="ml-2 text-xs text-red-400">(awaiting approval)</span>}
+                          </div>
+                          <span className="text-sm font-medium">₦{s.cost.toLocaleString()}</span>
                         </div>
-                        <span className="text-sm font-medium">₦{s.cost.toLocaleString()}</span>
+                        {s.approved && <TrackingSteps shipment={s} />}
+                        {s.status === 'pending' && !s.approved && (
+                          <button onClick={() => setShowPayment({ shipmentId: s.id, amount: s.cost })} className="mt-2 bg-green-600 text-white text-xs px-3 py-1 rounded-full hover:bg-green-700">Pay now</button>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -370,13 +499,42 @@
             <div className="mt-6 grid grid-cols-3 gap-4 bg-white p-4 rounded-2xl border border-gray-100">
               <div><span className="text-xs text-gray-400">Total</span><div className="text-xl font-bold">{shipments.length}</div></div>
               <div><span className="text-xs text-gray-400">Delivered</span><div className="text-xl font-bold">{shipments.filter(s=>s.status==='delivered').length}</div></div>
-              <div><span className="text-xs text-gray-400">Pending</span><div className="text-xl font-bold">{shipments.filter(s=>s.status==='pending').length}</div></div>
+              <div><span className="text-xs text-gray-400">In transit</span><div className="text-xl font-bold">{shipments.filter(s=>s.status==='in transit').length}</div></div>
             </div>
+
+            {/* Payment Modal */}
+            {showPayment && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-2xl max-w-md w-full p-6">
+                  <h3 className="text-xl font-bold mb-4">Complete Payment</h3>
+                  <p className="text-gray-600 mb-2">Shipment #{showPayment.shipmentId}</p>
+                  <p className="text-2xl font-bold text-blue-600 mb-4">₦{showPayment.amount.toLocaleString()}</p>
+                  <div className="space-y-2 mb-4">
+                    <div className="border rounded-xl p-3 flex items-center gap-3 hover:border-blue-400 cursor-pointer">
+                      <i className="fas fa-credit-card text-blue-600 text-xl"></i>
+                      <span>Pay with Card</span>
+                    </div>
+                    <div className="border rounded-xl p-3 flex items-center gap-3 hover:border-blue-400 cursor-pointer">
+                      <i className="fas fa-mobile-alt text-blue-600 text-xl"></i>
+                      <span>Pay with USSD</span>
+                    </div>
+                    <div className="border rounded-xl p-3 flex items-center gap-3 hover:border-blue-400 cursor-pointer">
+                      <i className="fas fa-wallet text-blue-600 text-xl"></i>
+                      <span>Pay with Wallet</span>
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <button onClick={() => handlePayment(showPayment.shipmentId, showPayment.amount)} className="flex-1 bg-blue-600 text-white py-2 rounded-xl font-medium hover:bg-blue-700">Pay Now</button>
+                    <button onClick={() => setShowPayment(null)} className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-xl font-medium hover:bg-gray-300">Cancel</button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         );
       };
 
-      // Admin Dashboard (full power)
+      // Admin Dashboard (same as before but with X branding)
       const AdminDashboard = () => {
         const { users, testimonials, media, shipments, pricing, 
                 deleteUser, updateUser, addTestimonial, deleteTestimonial,
@@ -419,12 +577,13 @@
               <h3 className="font-semibold flex items-center gap-2"><i className="fas fa-users text-blue-500"></i> Customer Management</h3>
               <div className="overflow-x-auto mt-3">
                 <table className="w-full text-sm">
-                  <thead><tr className="text-left border-b"><th>Name</th><th>Email</th><th>Role</th><th>Actions</th></tr></thead>
+                  <thead><tr className="text-left border-b"><th>Name</th><th>Email</th><th>Promo</th><th>Role</th><th>Actions</th></tr></thead>
                   <tbody>
                     {users.map(u => (
                       <tr key={u.id} className="border-b border-gray-50">
                         <td className="py-2">{u.name}</td>
                         <td>{u.email}</td>
+                        <td>{u.promoOptIn ? '✅' : '❌'}</td>
                         <td><span className="text-xs bg-gray-100 px-2 rounded-full">{u.role}</span></td>
                         <td className="flex gap-2">
                           <button onClick={() => setEditingUser(u)} className="text-blue-500 hover:text-blue-700 text-xs"><i className="fas fa-edit"></i></button>
@@ -441,7 +600,8 @@
                   <div className="flex gap-2 mt-2 flex-wrap">
                     <input type="text" value={editingUser.name} onChange={e=>setEditingUser({...editingUser, name:e.target.value})} className="border rounded px-2 py-1 text-sm" />
                     <input type="email" value={editingUser.email} onChange={e=>setEditingUser({...editingUser, email:e.target.value})} className="border rounded px-2 py-1 text-sm" />
-                    <button onClick={() => { updateUser(editingUser.id, { name: editingUser.name, email: editingUser.email }); setEditingUser(null); }} className="bg-blue-600 text-white px-3 py-1 rounded text-sm">Save</button>
+                    <label className="flex items-center gap-1 text-sm"><input type="checkbox" checked={editingUser.promoOptIn} onChange={e=>setEditingUser({...editingUser, promoOptIn:e.target.checked})} /> Promo</label>
+                    <button onClick={() => { updateUser(editingUser.id, { name: editingUser.name, email: editingUser.email, promoOptIn: editingUser.promoOptIn }); setEditingUser(null); }} className="bg-blue-600 text-white px-3 py-1 rounded text-sm">Save</button>
                     <button onClick={() => setEditingUser(null)} className="bg-gray-300 px-3 py-1 rounded text-sm">Cancel</button>
                   </div>
                 </div>
@@ -546,14 +706,14 @@
         );
       };
 
-      // Footer with social handles
+      // Footer with X instead of Twitter
       const Footer = () => (
         <footer className="bg-white border-t border-gray-200 py-6 mt-12">
           <div className="max-w-6xl mx-auto px-4 flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="text-sm text-gray-500">© 2026 EasyShip · Ship Smarter. Grow Faster.</div>
             <div className="flex gap-4 text-xl text-gray-600">
-              <a href="#" className="hover:text-blue-600"><i className="fab fa-whatsapp"></i></a>
-              <a href="#" className="hover:text-blue-400"><i className="fab fa-twitter"></i></a>
+              <a href="#" className="hover:text-green-600"><i className="fab fa-whatsapp"></i></a>
+              <a href="#" className="hover:text-black"><i className="fab fa-x-twitter"></i></a>
               <a href="#" className="hover:text-blue-700"><i className="fab fa-facebook"></i></a>
               <a href="#" className="hover:text-pink-600"><i className="fab fa-instagram"></i></a>
             </div>
