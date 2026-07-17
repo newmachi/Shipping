@@ -12,6 +12,7 @@
       body { background: #f9fafc; }
       .card-shadow { box-shadow: 0 8px 20px rgba(0,0,0,0.02); }
       .transition-all { transition: all 0.2s ease; }
+      .media-grid img, .media-grid video { width: 100%; height: 180px; object-fit: cover; border-radius: 12px; }
     </style>
   </head>
   <body>
@@ -32,11 +33,27 @@
         { id: 3, author: 'Tunde O.', role: 'E-commerce startup', text: 'Compared 250+ couriers instantly and cut shipping costs by 70%. EasyShip is incredible.', rating: 4 },
       ];
 
-      // initial users: demo customer & admin
+      const INITIAL_MEDIA = [
+        { id: 1, type: 'image', url: 'https://picsum.photos/seed/ship1/400/300', caption: 'Our packing team' },
+        { id: 2, type: 'image', url: 'https://picsum.photos/seed/ship2/400/300', caption: 'Fragile items handling' },
+        { id: 3, type: 'video', url: 'https://www.w3schools.com/html/mov_bbb.mp4', caption: 'How we pack' },
+        { id: 4, type: 'image', url: 'https://picsum.photos/seed/ship3/400/300', caption: 'International shipping' },
+      ];
+
       const INITIAL_USERS = [
         { id: 1, email: 'customer@easyship.com', password: 'customer123', role: 'customer', name: 'Amara Okonkwo' },
         { id: 2, email: 'admin@easyship.com', password: 'admin123', role: 'admin', name: 'Chinasa Magnus' },
+        { id: 3, email: 'jane@example.com', password: 'jane123', role: 'customer', name: 'Jane Doe' },
       ];
+
+      // Pricing per route (from → to)
+      const INITIAL_PRICING = {
+        'Lagos→Abuja': 4500,
+        'Lagos→Houston': 32000,
+        'Lagos→London': 45000,
+        'Abuja→Lagos': 4500,
+        'Lagos→Port Harcourt': 3800,
+      };
 
       // ---------- App Context ----------
       const AppContext = React.createContext();
@@ -44,11 +61,14 @@
       const AppProvider = ({ children }) => {
         const [users, setUsers] = useState(INITIAL_USERS);
         const [testimonials, setTestimonials] = useState(INITIAL_TESTIMONIALS);
+        const [media, setMedia] = useState(INITIAL_MEDIA);
         const [currentUser, setCurrentUser] = useState(null);
         const [isAuthenticated, setIsAuthenticated] = useState(false);
+        const [pricing, setPricing] = useState(INITIAL_PRICING);
         const [shipments, setShipments] = useState([
-          { id: 1, userId: 1, status: 'delivered', from: 'Lagos', to: 'Abuja', date: '2026-07-10', cost: 4500 },
-          { id: 2, userId: 1, status: 'in transit', from: 'Lagos', to: 'Houston, TX', date: '2026-07-15', cost: 32000 },
+          { id: 1, userId: 1, status: 'delivered', from: 'Lagos', to: 'Abuja', date: '2026-07-10', cost: 4500, approved: true },
+          { id: 2, userId: 1, status: 'in transit', from: 'Lagos', to: 'Houston, TX', date: '2026-07-15', cost: 32000, approved: true },
+          { id: 3, userId: 3, status: 'pending', from: 'Lagos', to: 'London', date: '2026-07-20', cost: 45000, approved: false },
         ]);
 
         const login = (email, password) => {
@@ -74,7 +94,13 @@
           return true;
         };
 
-        // admin functions
+        // Admin: customer management
+        const deleteUser = (id) => setUsers(users.filter(u => u.id !== id));
+        const updateUser = (id, data) => {
+          setUsers(users.map(u => u.id === id ? { ...u, ...data } : u));
+        };
+
+        // Admin: testimonials
         const addTestimonial = (testimonial) => {
           setTestimonials([...testimonials, { id: Date.now(), ...testimonial }]);
         };
@@ -82,26 +108,44 @@
           setTestimonials(testimonials.filter(t => t.id !== id));
         };
 
-        // customer shipments
+        // Admin: media
+        const addMedia = (item) => setMedia([...media, { id: Date.now(), ...item }]);
+        const deleteMedia = (id) => setMedia(media.filter(m => m.id !== id));
+
+        // Admin: pricing
+        const updatePricing = (route, price) => {
+          setPricing({ ...pricing, [route]: price });
+        };
+
+        // Shipments
         const getUserShipments = (userId) => shipments.filter(s => s.userId === userId);
         const addShipment = (shipment) => {
           setShipments([...shipments, { id: Date.now(), ...shipment }]);
+        };
+        const approveShipment = (id) => {
+          setShipments(shipments.map(s => s.id === id ? { ...s, approved: true, status: 'in transit' } : s));
+        };
+        const deleteShipment = (id) => {
+          setShipments(shipments.filter(s => s.id !== id));
         };
 
         const value = {
           users, setUsers,
           testimonials, setTestimonials,
+          media, setMedia,
           currentUser, setCurrentUser,
           isAuthenticated, setIsAuthenticated,
           login, logout, register,
           addTestimonial, deleteTestimonial,
+          addMedia, deleteMedia,
+          pricing, updatePricing,
           shipments, setShipments,
-          getUserShipments, addShipment,
+          getUserShipments, addShipment, approveShipment, deleteShipment,
+          deleteUser, updateUser,
         };
         return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
       };
 
-      // ---------- CUSTOM HOOK ----------
       const useApp = () => React.useContext(AppContext);
 
       // ---------- COMPONENTS ----------
@@ -134,12 +178,33 @@
         );
       };
 
-      // Public Home (includes testimonials)
+      // Media Showcase (above testimonials)
+      const MediaShowcase = () => {
+        const { media } = useApp();
+        return (
+          <section className="mt-8">
+            <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">📸 Behind the Scenes</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 media-grid">
+              {media.map(item => (
+                <div key={item.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                  {item.type === 'image' ? (
+                    <img src={item.url} alt={item.caption} className="w-full h-40 object-cover" />
+                  ) : (
+                    <video src={item.url} controls className="w-full h-40 object-cover" />
+                  )}
+                  <p className="text-xs text-gray-500 p-2 text-center">{item.caption}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        );
+      };
+
+      // Public Home
       const Home = ({ setView }) => {
         const { testimonials } = useApp();
         return (
           <div className="max-w-6xl mx-auto px-4 py-8">
-            {/* Hero */}
             <section className="text-center my-10">
               <h1 className="text-4xl md:text-5xl font-extrabold text-gray-800 leading-tight">Ship Smarter. <span className="text-blue-600">Grow Faster.</span></h1>
               <p className="text-lg text-gray-600 max-w-2xl mx-auto mt-4">EasyShip handles local drop-offs to international freight. Insured, tracked, and built for high-value goods.</p>
@@ -148,6 +213,9 @@
                 <button className="border border-gray-300 px-8 py-3 rounded-full font-medium hover:bg-gray-50">Learn More</button>
               </div>
             </section>
+
+            {/* Media Showcase */}
+            <MediaShowcase />
 
             {/* Testimonials */}
             <section className="mt-16">
@@ -164,7 +232,6 @@
               </div>
             </section>
 
-            {/* quick value props */}
             <section className="grid md:grid-cols-3 gap-4 mt-16 bg-blue-50 p-8 rounded-3xl">
               <div className="text-center"><i className="fas fa-shield-alt text-3xl text-blue-600"></i><p className="font-semibold mt-2">We break it, we pay it</p></div>
               <div className="text-center"><i className="fas fa-globe text-3xl text-blue-600"></i><p className="font-semibold mt-2">250+ couriers compared</p></div>
@@ -174,7 +241,7 @@
         );
       };
 
-      // Login / Register forms
+      // AuthForm (login/register)
       const AuthForm = ({ type, setView }) => {
         const { login, register } = useApp();
         const [email, setEmail] = useState('');
@@ -187,7 +254,7 @@
           setError('');
           if (type === 'login') {
             const success = login(email, password);
-            if (!success) setError('Invalid credentials. Try admin@easyship.com / admin123');
+            if (!success) setError('Invalid credentials.');
             else setView('dashboard');
           } else {
             if (!name.trim()) { setError('Full name required'); return; }
@@ -232,31 +299,33 @@
 
       // Customer Dashboard
       const CustomerDashboard = () => {
-        const { currentUser, getUserShipments, addShipment } = useApp();
+        const { currentUser, getUserShipments, addShipment, pricing } = useApp();
         const [shipments, setShipmentsState] = useState([]);
-        const [newShipment, setNewShipment] = useState({ from: '', to: '', cost: '', status: 'pending' });
+        const [newShipment, setNewShipment] = useState({ from: '', to: '', cost: '' });
 
         useEffect(() => {
           if (currentUser) {
-            const userShip = getUserShipments(currentUser.id);
-            setShipmentsState(userShip);
+            setShipmentsState(getUserShipments(currentUser.id));
           }
         }, [currentUser]);
 
         const handleAddShipment = (e) => {
           e.preventDefault();
           if (!newShipment.from || !newShipment.to || !newShipment.cost) return;
+          const routeKey = `${newShipment.from}→${newShipment.to}`;
+          const estimatedCost = pricing[routeKey] || parseFloat(newShipment.cost) || 5000;
           const shipment = {
             userId: currentUser.id,
-            status: 'in transit',
+            status: 'pending',
             from: newShipment.from,
             to: newShipment.to,
             date: new Date().toISOString().split('T')[0],
-            cost: parseFloat(newShipment.cost),
+            cost: estimatedCost,
+            approved: false,
           };
           addShipment(shipment);
           setShipmentsState([...shipments, shipment]);
-          setNewShipment({ from: '', to: '', cost: '', status: 'pending' });
+          setNewShipment({ from: '', to: '', cost: '' });
         };
 
         return (
@@ -265,11 +334,10 @@
             <p className="text-gray-500 mb-6">Your shipping dashboard</p>
 
             <div className="grid md:grid-cols-2 gap-6">
-              {/* Shipment history */}
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                 <h3 className="font-semibold text-gray-700 flex items-center gap-2"><i className="fas fa-box text-blue-500"></i> Recent shipments</h3>
                 {shipments.length === 0 ? (
-                  <p className="text-gray-400 text-sm mt-3">No shipments yet. Start shipping!</p>
+                  <p className="text-gray-400 text-sm mt-3">No shipments yet.</p>
                 ) : (
                   <ul className="mt-3 space-y-3">
                     {shipments.map((s, idx) => (
@@ -277,7 +345,8 @@
                         <div>
                           <span className="font-medium text-gray-800">{s.from} → {s.to}</span>
                           <span className="text-xs text-gray-400 ml-2">{s.date}</span>
-                          <span className={`ml-3 text-xs px-2 py-0.5 rounded-full ${s.status === 'delivered' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{s.status}</span>
+                          <span className={`ml-3 text-xs px-2 py-0.5 rounded-full ${s.status === 'delivered' ? 'bg-green-100 text-green-700' : s.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-100 text-blue-700'}`}>{s.status}</span>
+                          {!s.approved && <span className="ml-2 text-xs text-red-400">(awaiting approval)</span>}
                         </div>
                         <span className="text-sm font-medium">₦{s.cost.toLocaleString()}</span>
                       </li>
@@ -286,102 +355,220 @@
                 )}
               </div>
 
-              {/* New shipment form */}
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                 <h3 className="font-semibold text-gray-700 flex items-center gap-2"><i className="fas fa-plus-circle text-blue-500"></i> Book new shipment</h3>
                 <form onSubmit={handleAddShipment} className="mt-3 space-y-3">
                   <input type="text" value={newShipment.from} onChange={e=>setNewShipment({...newShipment, from:e.target.value})} placeholder="From (city)" className="w-full border border-gray-200 rounded-xl px-4 py-2 text-sm" required />
                   <input type="text" value={newShipment.to} onChange={e=>setNewShipment({...newShipment, to:e.target.value})} placeholder="To (city/country)" className="w-full border border-gray-200 rounded-xl px-4 py-2 text-sm" required />
-                  <input type="number" value={newShipment.cost} onChange={e=>setNewShipment({...newShipment, cost:e.target.value})} placeholder="Estimated cost (₦)" className="w-full border border-gray-200 rounded-xl px-4 py-2 text-sm" required />
-                  <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded-xl font-medium hover:bg-blue-700">Book shipment</button>
+                  <input type="number" value={newShipment.cost} onChange={e=>setNewShipment({...newShipment, cost:e.target.value})} placeholder="Est. cost (₦) - optional" className="w-full border border-gray-200 rounded-xl px-4 py-2 text-sm" />
+                  <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded-xl font-medium hover:bg-blue-700">Request shipment</button>
                 </form>
                 <p className="text-xs text-gray-400 mt-2"><i className="fas fa-shield-alt text-blue-400"></i> “We break it, we pay it” protection included.</p>
               </div>
             </div>
 
-            {/* Quick stats */}
             <div className="mt-6 grid grid-cols-3 gap-4 bg-white p-4 rounded-2xl border border-gray-100">
-              <div><span className="text-xs text-gray-400">Total shipments</span><div className="text-xl font-bold">{shipments.length}</div></div>
+              <div><span className="text-xs text-gray-400">Total</span><div className="text-xl font-bold">{shipments.length}</div></div>
               <div><span className="text-xs text-gray-400">Delivered</span><div className="text-xl font-bold">{shipments.filter(s=>s.status==='delivered').length}</div></div>
-              <div><span className="text-xs text-gray-400">In transit</span><div className="text-xl font-bold">{shipments.filter(s=>s.status==='in transit').length}</div></div>
+              <div><span className="text-xs text-gray-400">Pending</span><div className="text-xl font-bold">{shipments.filter(s=>s.status==='pending').length}</div></div>
             </div>
           </div>
         );
       };
 
-      // Admin Dashboard
+      // Admin Dashboard (full power)
       const AdminDashboard = () => {
-        const { testimonials, addTestimonial, deleteTestimonial, users, shipments } = useApp();
+        const { users, testimonials, media, shipments, pricing, 
+                deleteUser, updateUser, addTestimonial, deleteTestimonial,
+                addMedia, deleteMedia, updatePricing, approveShipment, deleteShipment } = useApp();
         const [newTest, setNewTest] = useState({ author: '', role: '', text: '', rating: 5 });
+        const [newMedia, setNewMedia] = useState({ type: 'image', url: '', caption: '' });
+        const [editingUser, setEditingUser] = useState(null);
+        const [priceRoute, setPriceRoute] = useState('');
+        const [priceValue, setPriceValue] = useState('');
 
-        const handleAdd = (e) => {
+        const handleAddTest = (e) => {
           e.preventDefault();
           if (!newTest.author || !newTest.text) return;
           addTestimonial(newTest);
           setNewTest({ author: '', role: '', text: '', rating: 5 });
         };
 
+        const handleAddMedia = (e) => {
+          e.preventDefault();
+          if (!newMedia.url) return;
+          addMedia(newMedia);
+          setNewMedia({ type: 'image', url: '', caption: '' });
+        };
+
+        const handleUpdatePrice = (e) => {
+          e.preventDefault();
+          if (!priceRoute || !priceValue) return;
+          updatePricing(priceRoute, parseFloat(priceValue));
+          setPriceRoute('');
+          setPriceValue('');
+        };
+
         return (
           <div className="max-w-6xl mx-auto px-4 py-8">
             <h2 className="text-3xl font-bold text-gray-800">⚙️ Admin Dashboard</h2>
-            <p className="text-gray-500 mb-6">Manage testimonials, view platform metrics</p>
+            <p className="text-gray-500 mb-6">Full control: customers, shipments, pricing, testimonials & media</p>
 
-            <div className="grid md:grid-cols-2 gap-8">
-              {/* Testimonial manager */}
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                <h3 className="font-semibold flex items-center gap-2"><i className="fas fa-quote-right text-blue-500"></i> Testimonials</h3>
-                <ul className="mt-3 space-y-3 max-h-60 overflow-y-auto">
-                  {testimonials.map(t => (
-                    <li key={t.id} className="border-b border-gray-50 pb-2 flex justify-between items-start">
-                      <div><span className="font-medium">{t.author}</span> <span className="text-xs text-gray-400">{t.role}</span><p className="text-sm text-gray-600">“{t.text}”</p></div>
-                      <button onClick={()=>deleteTestimonial(t.id)} className="text-red-400 hover:text-red-600 text-sm"><i className="fas fa-trash"></i></button>
-                    </li>
-                  ))}
-                </ul>
-                <form onSubmit={handleAdd} className="mt-4 space-y-2">
-                  <input type="text" value={newTest.author} onChange={e=>setNewTest({...newTest, author:e.target.value})} placeholder="Author name" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
-                  <input type="text" value={newTest.role} onChange={e=>setNewTest({...newTest, role:e.target.value})} placeholder="Role (e.g. Founder)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
-                  <textarea value={newTest.text} onChange={e=>setNewTest({...newTest, text:e.target.value})} placeholder="Testimonial text" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" rows="2" />
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">Rating:</span>
-                    <select value={newTest.rating} onChange={e=>setNewTest({...newTest, rating:parseInt(e.target.value)})} className="border border-gray-200 rounded-lg px-2 py-1">
-                      {[1,2,3,4,5].map(r=><option key={r}>{r}</option>)}
-                    </select>
-                  </div>
-                  <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm hover:bg-blue-700">Add testimonial</button>
-                </form>
+            {/* Customer Management */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-6">
+              <h3 className="font-semibold flex items-center gap-2"><i className="fas fa-users text-blue-500"></i> Customer Management</h3>
+              <div className="overflow-x-auto mt-3">
+                <table className="w-full text-sm">
+                  <thead><tr className="text-left border-b"><th>Name</th><th>Email</th><th>Role</th><th>Actions</th></tr></thead>
+                  <tbody>
+                    {users.map(u => (
+                      <tr key={u.id} className="border-b border-gray-50">
+                        <td className="py-2">{u.name}</td>
+                        <td>{u.email}</td>
+                        <td><span className="text-xs bg-gray-100 px-2 rounded-full">{u.role}</span></td>
+                        <td className="flex gap-2">
+                          <button onClick={() => setEditingUser(u)} className="text-blue-500 hover:text-blue-700 text-xs"><i className="fas fa-edit"></i></button>
+                          {u.role !== 'admin' && <button onClick={() => deleteUser(u.id)} className="text-red-400 hover:text-red-600 text-xs"><i className="fas fa-trash"></i></button>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-
-              {/* Platform metrics / user list */}
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                <h3 className="font-semibold flex items-center gap-2"><i className="fas fa-chart-simple text-blue-500"></i> Platform snapshot</h3>
-                <div className="grid grid-cols-2 gap-4 mt-4">
-                  <div><span className="text-xs text-gray-400">Total users</span><div className="text-2xl font-bold">{users.length}</div></div>
-                  <div><span className="text-xs text-gray-400">Total shipments</span><div className="text-2xl font-bold">{shipments.length}</div></div>
+              {editingUser && (
+                <div className="mt-4 p-4 bg-gray-50 rounded-xl">
+                  <h4 className="font-medium">Edit User: {editingUser.name}</h4>
+                  <div className="flex gap-2 mt-2 flex-wrap">
+                    <input type="text" value={editingUser.name} onChange={e=>setEditingUser({...editingUser, name:e.target.value})} className="border rounded px-2 py-1 text-sm" />
+                    <input type="email" value={editingUser.email} onChange={e=>setEditingUser({...editingUser, email:e.target.value})} className="border rounded px-2 py-1 text-sm" />
+                    <button onClick={() => { updateUser(editingUser.id, { name: editingUser.name, email: editingUser.email }); setEditingUser(null); }} className="bg-blue-600 text-white px-3 py-1 rounded text-sm">Save</button>
+                    <button onClick={() => setEditingUser(null)} className="bg-gray-300 px-3 py-1 rounded text-sm">Cancel</button>
+                  </div>
                 </div>
-                <div className="mt-4">
-                  <h4 className="text-sm font-medium text-gray-700">Registered users</h4>
-                  <ul className="mt-2 text-sm space-y-1 max-h-40 overflow-y-auto">
-                    {users.map(u => <li key={u.id} className="border-b border-gray-50 py-1 flex justify-between"><span>{u.name} ({u.email})</span><span className="text-xs bg-gray-100 px-2 rounded-full">{u.role}</span></li>)}
+              )}
+            </div>
+
+            {/* Shipment Management */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-6">
+              <h3 className="font-semibold flex items-center gap-2"><i className="fas fa-truck text-blue-500"></i> Shipment Management</h3>
+              <div className="overflow-x-auto mt-3">
+                <table className="w-full text-sm">
+                  <thead><tr className="text-left border-b"><th>From → To</th><th>Cost</th><th>Status</th><th>Approved</th><th>Actions</th></tr></thead>
+                  <tbody>
+                    {shipments.map(s => (
+                      <tr key={s.id} className="border-b border-gray-50">
+                        <td className="py-2">{s.from} → {s.to}</td>
+                        <td>₦{s.cost.toLocaleString()}</td>
+                        <td>{s.status}</td>
+                        <td>{s.approved ? '✅' : '⏳'}</td>
+                        <td className="flex gap-2">
+                          {!s.approved && <button onClick={() => approveShipment(s.id)} className="bg-green-500 text-white px-2 py-0.5 rounded text-xs">Approve</button>}
+                          <button onClick={() => deleteShipment(s.id)} className="text-red-400 hover:text-red-600 text-xs"><i className="fas fa-trash"></i></button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Pricing Management */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-6">
+              <h3 className="font-semibold flex items-center gap-2"><i className="fas fa-tags text-blue-500"></i> Route Pricing</h3>
+              <div className="grid md:grid-cols-2 gap-4 mt-3">
+                <div>
+                  <h4 className="text-sm font-medium">Current prices</h4>
+                  <ul className="text-sm space-y-1 mt-1">
+                    {Object.entries(pricing).map(([route, price]) => (
+                      <li key={route} className="flex justify-between border-b border-gray-50 py-1"><span>{route}</span><span>₦{price.toLocaleString()}</span></li>
+                    ))}
                   </ul>
                 </div>
+                <div>
+                  <h4 className="text-sm font-medium">Update or add route</h4>
+                  <form onSubmit={handleUpdatePrice} className="flex flex-col gap-2 mt-1">
+                    <input type="text" value={priceRoute} onChange={e=>setPriceRoute(e.target.value)} placeholder="e.g. Lagos→Abuja" className="border rounded px-3 py-1 text-sm" />
+                    <input type="number" value={priceValue} onChange={e=>setPriceValue(e.target.value)} placeholder="Price (₦)" className="border rounded px-3 py-1 text-sm" />
+                    <button type="submit" className="bg-blue-600 text-white px-4 py-1 rounded text-sm">Update price</button>
+                  </form>
+                </div>
               </div>
+            </div>
+
+            {/* Testimonial Manager */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-6">
+              <h3 className="font-semibold flex items-center gap-2"><i className="fas fa-quote-right text-blue-500"></i> Testimonials</h3>
+              <ul className="mt-3 space-y-3 max-h-60 overflow-y-auto">
+                {testimonials.map(t => (
+                  <li key={t.id} className="border-b border-gray-50 pb-2 flex justify-between items-start">
+                    <div><span className="font-medium">{t.author}</span> <span className="text-xs text-gray-400">{t.role}</span><p className="text-sm text-gray-600">“{t.text}”</p></div>
+                    <button onClick={()=>deleteTestimonial(t.id)} className="text-red-400 hover:text-red-600 text-sm"><i className="fas fa-trash"></i></button>
+                  </li>
+                ))}
+              </ul>
+              <form onSubmit={handleAddTest} className="mt-4 space-y-2">
+                <input type="text" value={newTest.author} onChange={e=>setNewTest({...newTest, author:e.target.value})} placeholder="Author name" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
+                <input type="text" value={newTest.role} onChange={e=>setNewTest({...newTest, role:e.target.value})} placeholder="Role" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
+                <textarea value={newTest.text} onChange={e=>setNewTest({...newTest, text:e.target.value})} placeholder="Testimonial text" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" rows="2" />
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">Rating:</span>
+                  <select value={newTest.rating} onChange={e=>setNewTest({...newTest, rating:parseInt(e.target.value)})} className="border border-gray-200 rounded-lg px-2 py-1">
+                    {[1,2,3,4,5].map(r=><option key={r}>{r}</option>)}
+                  </select>
+                </div>
+                <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm hover:bg-blue-700">Add testimonial</button>
+              </form>
+            </div>
+
+            {/* Media Manager */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+              <h3 className="font-semibold flex items-center gap-2"><i className="fas fa-images text-blue-500"></i> Media Showcase</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3">
+                {media.map(m => (
+                  <div key={m.id} className="relative group">
+                    {m.type === 'image' ? <img src={m.url} alt={m.caption} className="w-full h-20 object-cover rounded" /> : <video src={m.url} className="w-full h-20 object-cover rounded" />}
+                    <button onClick={()=>deleteMedia(m.id)} className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition">×</button>
+                    <p className="text-xs text-gray-500 text-center truncate">{m.caption}</p>
+                  </div>
+                ))}
+              </div>
+              <form onSubmit={handleAddMedia} className="mt-4 flex flex-wrap gap-2">
+                <select value={newMedia.type} onChange={e=>setNewMedia({...newMedia, type:e.target.value})} className="border rounded px-2 py-1 text-sm">
+                  <option value="image">Image</option>
+                  <option value="video">Video</option>
+                </select>
+                <input type="text" value={newMedia.url} onChange={e=>setNewMedia({...newMedia, url:e.target.value})} placeholder="Media URL" className="border rounded px-3 py-1 text-sm flex-1" />
+                <input type="text" value={newMedia.caption} onChange={e=>setNewMedia({...newMedia, caption:e.target.value})} placeholder="Caption" className="border rounded px-3 py-1 text-sm flex-1" />
+                <button type="submit" className="bg-blue-600 text-white px-4 py-1 rounded text-sm">Add</button>
+              </form>
             </div>
           </div>
         );
       };
 
+      // Footer with social handles
+      const Footer = () => (
+        <footer className="bg-white border-t border-gray-200 py-6 mt-12">
+          <div className="max-w-6xl mx-auto px-4 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div className="text-sm text-gray-500">© 2026 EasyShip · Ship Smarter. Grow Faster.</div>
+            <div className="flex gap-4 text-xl text-gray-600">
+              <a href="#" className="hover:text-blue-600"><i className="fab fa-whatsapp"></i></a>
+              <a href="#" className="hover:text-blue-400"><i className="fab fa-twitter"></i></a>
+              <a href="#" className="hover:text-blue-700"><i className="fab fa-facebook"></i></a>
+              <a href="#" className="hover:text-pink-600"><i className="fab fa-instagram"></i></a>
+            </div>
+          </div>
+        </footer>
+      );
+
       // Main App Router
       const App = () => {
         const { isAuthenticated, currentUser } = useApp();
-        const [view, setView] = useState('home'); // home | login | register | dashboard
+        const [view, setView] = useState('home');
 
         useEffect(() => {
-          if (isAuthenticated) {
-            setView('dashboard');
-          } else {
-            setView('home');
-          }
+          if (isAuthenticated) setView('dashboard');
+          else setView('home');
         }, [isAuthenticated]);
 
         const renderView = () => {
@@ -390,26 +577,19 @@
             if (view === 'register') return <AuthForm type="register" setView={setView} />;
             return <Home setView={setView} />;
           } else {
-            // authenticated
-            if (currentUser?.role === 'admin') return <AdminDashboard />;
-            return <CustomerDashboard />;
+            return currentUser?.role === 'admin' ? <AdminDashboard /> : <CustomerDashboard />;
           }
         };
 
         return (
-          <div className="min-h-screen bg-gray-50/50">
+          <div className="min-h-screen bg-gray-50/50 flex flex-col">
             <NavBar />
-            <main className="pt-4 pb-12">
-              {renderView()}
-            </main>
-            <footer className="text-center text-xs text-gray-400 py-6 border-t border-gray-200 mt-8">
-              EasyShip · Ship Smarter. Grow Faster. · Capstone 2026
-            </footer>
+            <main className="flex-1 pt-4 pb-12">{renderView()}</main>
+            <Footer />
           </div>
         );
       };
 
-      // Root
       const Root = () => (
         <AppProvider>
           <App />
